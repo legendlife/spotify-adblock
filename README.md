@@ -1,7 +1,7 @@
 # spotify-adblock.
 Spotify adblocker for Linux (macOS untested) that works by wrapping `getaddrinfo` and `cef_urlrequest_create`. It blocks requests to domains that are not on the allowlist, as well as URLs that are on the denylist.
 
-### Notes.
+### Notes:
 * This **does not** work with the snap Spotify package.
 * This **might not** work with the Flatpak Spotify package, depending on your system's shared libraries' versions.
 * On Debian-based distributions (e.g. Ubuntu), the Debian Spotify package can be installed by following the instructions at the bottom of [this page](https://www.spotify.com/us/download/linux/). *(recommended)*
