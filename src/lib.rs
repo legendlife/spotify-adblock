@@ -1,19 +1,13 @@
 mod cef;
 
 use cef::{
-    _cef_request_context_t, _cef_request_t, _cef_urlrequest_client_t, cef_string_userfree_utf16_free, cef_urlrequest_t,
+    _cef_request_context_t, _cef_request_t, _cef_urlrequest_client_t, cef_string_userfree_utf16_t, cef_urlrequest_t,
 };
 use lazy_static::lazy_static;
 use libc::{addrinfo, c_char, dlsym, EAI_FAIL, RTLD_NEXT};
-use regex::Regex;
+use regex::RegexSet;
 use serde::Deserialize;
-use std::ffi::CStr;
-use std::fs::read_to_string;
-use std::mem;
-use std::path::PathBuf;
-use std::ptr::null;
-use std::slice::from_raw_parts;
-use std::string::String;
+use std::{ffi::CStr, fs::read_to_string, mem, path::PathBuf, ptr::null, slice::from_raw_parts, string::String};
 
 macro_rules! hook {
     ($function_name:ident($($parameter_name:ident: $parameter_type:ty),*) -> $return_type:ty => $new_function_name:ident $body:block) => {
@@ -37,8 +31,10 @@ macro_rules! hook {
 
 #[derive(Deserialize)]
 struct Config {
-    allowlist: Vec<String>,
-    denylist: Vec<String>,
+    #[serde(with = "serde_regex")]
+    allowlist: RegexSet,
+    #[serde(with = "serde_regex")]
+    denylist: RegexSet,
 }
 
 lazy_static! {
@@ -69,8 +65,8 @@ lazy_static! {
             println!("[*] Error: No config file");
         };
         Config {
-            allowlist: Vec::new(),
-            denylist: Vec::new(),
+            allowlist: RegexSet::empty(),
+            denylist: RegexSet::empty(),
         }
     };
 }
@@ -79,7 +75,7 @@ hook! {
     getaddrinfo(node: *const c_char, service: *const c_char, hints: *const addrinfo, res: *const *const addrinfo) -> i32 => REAL_GETADDRINFO {
         let domain = CStr::from_ptr(node).to_str().unwrap();
 
-        if listed(domain, &CONFIG.allowlist) {
+        if CONFIG.allowlist.is_match(&domain) {
             println!("[+] getaddrinfo:\t\t {}", domain);
             REAL_GETADDRINFO(node, service, hints, res)
         } else {
@@ -96,7 +92,7 @@ hook! {
         let url = String::from_utf16(url_utf16).unwrap();
         cef_string_userfree_utf16_free(url_cef);
 
-        if listed(&url, &CONFIG.denylist) {
+        if CONFIG.denylist.is_match(&url) {
             println!("[-] cef_urlrequest_create:\t {}", url);
             null()
         } else {
@@ -106,19 +102,8 @@ hook! {
     }
 }
 
-fn listed(element: &str, regex_list: &Vec<String>) -> bool {
-    for regex_string in regex_list {
-        // TODO: only generate each regex once outside of loop
-        match Regex::new(&regex_string) {
-            Ok(regex) => {
-                if regex.is_match(element) {
-                    return true;
-                }
-            }
-            Err(error) => {
-                println!("[*] Warning: Invalid regex ({})", error);
-            }
-        }
+hook! {
+    cef_string_userfree_utf16_free(_str: cef_string_userfree_utf16_t) -> () => REAL_CEF_STRING_USERFREE_UTF16_FREE {
+        REAL_CEF_STRING_USERFREE_UTF16_FREE(_str);
     }
-    false
 }
